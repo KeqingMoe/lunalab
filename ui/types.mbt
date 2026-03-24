@@ -1,0 +1,23 @@
+///|
+using @qt {
+  type NullptrError,
+  type Signal,
+  type QMainWindow,
+  type QWidget,
+  type QBoxLayout,
+  type QSplitter,
+  type QStackedWidget,
+  type QToolBar,
+  type QSizePolicy,
+  type QToolButton,
+  type QButtonGroup,
+  type QAction,
+  type QDialog,
+  type QPlainTextEdit,
+  type QObject,
+  type QTextDocument,
+  type QPushButton,
+  type QLabel,
+  trait AsWidget,
+  trait AsObject,
+}

@@ -1,5 +1,7 @@
 import {
+  "KeqingMoe/qt",
   "KeqingMoe/lunalab/ui",
+  "KeqingMoe/lunalab/ui/styles",
   "moonbitlang/core/env",
 }
 
