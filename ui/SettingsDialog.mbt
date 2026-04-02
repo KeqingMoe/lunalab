@@ -4,10 +4,17 @@ pub struct SettingsDialog {
 }
 
 ///|
+let settings_dialog_style : String =
+  #|QDialog#SettingsDialog {
+  #|  background: #ffffff;
+  #|}
+
+///|
 pub fn SettingsDialog::new() -> Self {
   try! ({
     let root = QDialog::new()
     root.setObjectName("SettingsDialog")
+    root.setStyleSheet(settings_dialog_style)
     root.setWindowTitle("设置")
     root.setModal(true)
 

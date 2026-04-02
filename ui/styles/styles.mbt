@@ -2,4 +2,56 @@
 
 ///|
 let resource : String =
+  #|QWidget {
+  #|  background: #f6f8fb;
+  #|  color: #101828;
+  #|  font-size: 13px;
+  #|}
+  #|
+  #|QWidget#MainStack,
+  #|QWidget#ChatPage,
+  #|QWidget#TreePage {
+  #|  background: #f6f8fb;
+  #|}
+  #|
+  #|QMainWindow#MainWindow {
+  #|  background: #f6f8fb;
+  #|}
+  #|
+  #|QSplitter#MainSplitter {
+  #|  background: #f6f8fb;
+  #|}
+  #|
+  #|QSplitter#MainSplitter::handle {
+  #|  background: #e4e7ec;
+  #|  width: 1px;
+  #|}
+  #|
+  #|QScrollBar:vertical {
+  #|  background: transparent;
+  #|  width: 10px;
+  #|  margin: 6px 2px;
+  #|}
+  #|
+  #|QScrollBar::handle:vertical {
+  #|  background: #cfd4dc;
+  #|  border-radius: 5px;
+  #|  min-height: 28px;
+  #|}
+  #|
+  #|QScrollBar::handle:vertical:hover {
+  #|  background: #98a2b3;
+  #|}
+  #|
+  #|QScrollBar::add-line:vertical,
+  #|QScrollBar::sub-line:vertical,
+  #|QScrollBar::add-page:vertical,
+  #|QScrollBar::sub-page:vertical,
+  #|QScrollBar::add-line:horizontal,
+  #|QScrollBar::sub-line:horizontal,
+  #|QScrollBar::add-page:horizontal,
+  #|QScrollBar::sub-page:horizontal {
+  #|  background: transparent;
+  #|  border: none;
+  #|}
   #|

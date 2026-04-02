@@ -1,3 +1,6 @@
 import {
   "KeqingMoe/qt",
+  "KeqingMoe/lunalab/core",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
 }
