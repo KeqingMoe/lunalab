@@ -6,6 +6,7 @@ pub struct MainWindow {
   sidebar : LeftSidebar
   chat : ChatPage
   tree : TreePage
+  app_state : AppStateStore
   conversations : Array[ConversationSession]
   mut current_index : Int?
   mut draft : ConversationSession?
@@ -16,12 +17,14 @@ pub struct MainWindow {
 ///|
 pub fn MainWindow::new() -> Self {
   try! ({
+    let app_state = AppStateStore::new(snapshot=load_app_state_snapshot())
     let toolbar = ToolBar::new()
     let sidebar = LeftSidebar::new()
     let chat = ChatPage::new()
     let tree = TreePage::new()
-    let conversations = []
-    let draft = new_conversation_session()
+    let conversations = app_state.conversation_sessions()
+    let current_index = app_state.current_index()
+    let draft = app_state.draft_session()
 
     let main = QStackedWidget::new()
     main.setObjectName("MainStack")
@@ -54,19 +57,31 @@ pub fn MainWindow::new() -> Self {
       sidebar,
       chat,
       tree,
+      app_state,
       conversations,
-      current_index: None,
-      draft: Some(draft),
-      sidebar_width: sidebar_default_width(),
-      sidebar_hidden: false,
+      current_index,
+      draft,
+      sidebar_width: app_state.sidebar_width(),
+      sidebar_hidden: app_state.sidebar_hidden(),
     }
 
-    match window.draft {
-      Some(draft) => window.chat.load_tree(draft.tree)
-      None => ()
+    match window.current_index {
+      Some(index) if index >= 0 && index < window.conversations.length() =>
+        window.chat.load_tree(window.conversations[index].tree)
+      _ =>
+        match window.draft {
+          Some(draft) => window.chat.load_tree(draft.tree)
+          None => ()
+        }
     }
+    window.chat.set_provider(window.app_state.current_provider())
     window.sync_sidebar()
-    window.toolbar.set_sidebar_hidden(false)
+    if window.sidebar_hidden {
+      window.splitter.setSizes([0, 1])
+    } else {
+      window.splitter.setSizes([window.sidebar_width, 750])
+    }
+    window.toolbar.set_sidebar_hidden(window.sidebar_hidden)
 
     let _ = window.sidebar
       .chat_created()
@@ -97,10 +112,42 @@ pub fn MainWindow::new() -> Self {
       .connect(_ => main.setCurrentWidget(tree))
     let _ = window.toolbar
       .settings_clicked()
-      .connect(_ => SettingsDialog::new().show())
+      .connect(_ => window.open_settings_dialog())
 
     window
   })
+}
+
+///|
+fn MainWindow::persist_state(self : Self) -> Unit {
+  self.app_state.set_conversation_state(
+    self.conversations,
+    self.current_index,
+    self.draft,
+  )
+  self.app_state.set_sidebar_state(self.sidebar_width, self.sidebar_hidden)
+  save_app_state_snapshot(self.app_state.snapshot())
+}
+
+///|
+fn MainWindow::open_settings_dialog(self : Self) -> Unit raise NullptrError {
+  let dialog = SettingsDialog::new(
+    self.app_state.providers(),
+    self.app_state.current_provider_id(),
+  )
+  dialog.as_dialog().setParent(self.root)
+  let _ = dialog
+    .as_dialog()
+    .accepted()
+    .connect(_ => {
+      self.app_state.set_providers(
+        dialog.providers(),
+        dialog.current_provider_id(),
+      )
+      self.chat.set_provider(self.app_state.current_provider())
+      self.persist_state()
+    })
+  dialog.show()
 }
 
 ///|
@@ -120,6 +167,7 @@ fn MainWindow::start_new_conversation(self : Self) -> Unit raise NullptrError {
     None => ()
   }
   self.sync_sidebar()
+  self.persist_state()
 }
 
 ///|
@@ -147,6 +195,7 @@ fn MainWindow::select_conversation(
   self.current_index = Some(index)
   self.chat.load_tree(self.conversations[index].tree)
   self.sync_sidebar()
+  self.persist_state()
 }
 
 ///|
@@ -178,6 +227,7 @@ fn MainWindow::sync_conversation_after_mutation(
   }
 
   self.sync_sidebar()
+  self.persist_state()
 }
 
 ///|
@@ -199,6 +249,7 @@ fn MainWindow::request_sidebar_hidden(
     self.splitter.setSizes([width, 1])
   }
   self.toolbar.set_sidebar_hidden(hidden)
+  self.persist_state()
 }
 
 ///|
@@ -221,6 +272,7 @@ fn MainWindow::sync_sidebar_state_from_splitter(
       self.toolbar.set_sidebar_hidden(false)
     }
   }
+  self.persist_state()
 }
 
 ///|

@@ -2,6 +2,7 @@
 pub struct ChatPage {
   root : QWidget
   mut tree : ChatTree
+  mut provider : ProviderConfig?
   chat_view : ChatView
   composer : ComposerPanel
   manager : QNetworkAccessManager
@@ -41,6 +42,7 @@ pub fn ChatPage::new() -> Self {
     let page = ChatPage::{
       root,
       tree,
+      provider: None,
       chat_view,
       composer,
       manager,
@@ -57,6 +59,11 @@ pub fn ChatPage::new() -> Self {
     page.sync_view()
     page
   })
+}
+
+///|
+pub fn ChatPage::set_provider(self : Self, provider : ProviderConfig?) -> Unit {
+  self.provider = provider
 }
 
 ///|
@@ -137,7 +144,7 @@ fn ChatPage::request_assistant_message(
   self : Self,
   target_tree : ChatTree,
 ) -> Unit raise NullptrError {
-  match openrouter_missing_config_message() {
+  match provider_missing_config_message(self.provider) {
     Some(message) => {
       ignore(target_tree.commit(Message::assistant(message)))
       if physical_equal(self.tree, target_tree) {
@@ -146,9 +153,11 @@ fn ChatPage::request_assistant_message(
       self.notify_mutation()
     }
     None => {
-      let request = QNetworkRequest::new(openrouter_request_url())
-      let body = build_openrouter_chat_request_body(
-        conversation_messages(target_tree),
+      let provider = self.provider.unwrap()
+      let request = QNetworkRequest::new(provider_request_url(provider))
+      let body = build_provider_chat_request_body(
+        provider,
+        target_tree.context_messages(),
       )
 
       request.setContentLength(body.length().to_int64())
@@ -156,7 +165,7 @@ fn ChatPage::request_assistant_message(
       request.setTransferTimeout(120000)
       request.setRawHeader(
         "Authorization",
-        @utf8.encode("Bearer \{openrouter_api_key().trim().to_string()}"),
+        provider_auth_header_value(provider),
       )
 
       self.set_busy(true)
@@ -164,7 +173,9 @@ fn ChatPage::request_assistant_message(
       let reply = self.manager.post(request, body)
       let _ = reply
         .finished()
-        .connect(_ => self.finish_assistant_request(reply, target_tree))
+        .connect(_ => {
+          self.finish_assistant_request(reply, target_tree, provider)
+        })
     }
   }
 }
@@ -174,12 +185,14 @@ fn ChatPage::finish_assistant_request(
   self : Self,
   reply : QNetworkReply,
   target_tree : ChatTree,
+  provider : ProviderConfig,
 ) -> Unit raise NullptrError {
   let raw_text = @utf8.decode_lossy(reply.readAll())
   let assistant_text = if reply.error() is NoError {
-    extract_openrouter_response_text(raw_text)
+    extract_provider_response_text(raw_text)
   } else {
-    openrouter_failure_message(
+    provider_failure_message(
+      provider,
       reply.httpStatusCode(),
       reply.httpReasonPhrase(),
       reply.errorString(),

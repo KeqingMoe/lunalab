@@ -1,5 +1,5 @@
 ///|
-using @core {type ChatTree, type Message, type Role}
+using @core {type ChatTree, type ChatTreeSnapshot, type Message, type Role}
 
 ///|
 using @qt {
@@ -16,7 +16,11 @@ using @qt {
   type QSizePolicy,
   type QToolButton,
   type QButtonGroup,
+  type QComboBox,
   type QDialog,
+  type QDialogButtonBox,
+  type QGridLayout,
+  type QLineEdit,
   type QPlainTextEdit,
   type QObject,
   type QNetworkAccessManager,
