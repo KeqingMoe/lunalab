@@ -246,6 +246,7 @@ pub fn SettingsDialog::new(
       draft: None,
       sidebar_width: sidebar_default_width(),
       sidebar_hidden: false,
+      next_session_id: 1,
     })
 
     let dialog = SettingsDialog::{

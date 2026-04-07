@@ -26,6 +26,7 @@ test "app state store sanitizes missing current provider" {
     draft: None,
     sidebar_width: 12,
     sidebar_hidden: false,
+    next_session_id: 0,
   }
 
   let store = AppStateStore::new(snapshot~)

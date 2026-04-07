@@ -1,5 +1,6 @@
 ///|
 struct ConversationSession {
+  id : String
   mut title : String
   tree : ChatTree
 }
@@ -16,8 +17,9 @@ fn new_chat_tree() -> ChatTree {
 }
 
 ///|
-fn new_conversation_session() -> ConversationSession {
+fn new_conversation_session(id : String) -> ConversationSession {
   ConversationSession::{
+    id,
     title: default_conversation_title(),
     tree: new_chat_tree(),
   }

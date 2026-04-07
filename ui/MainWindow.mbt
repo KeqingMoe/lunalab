@@ -119,14 +119,32 @@ pub fn MainWindow::new() -> Self {
 }
 
 ///|
-fn MainWindow::persist_state(self : Self) -> Unit {
+fn MainWindow::conversation_snapshot(self : Self) -> AppStateSnapshot {
   self.app_state.set_conversation_state(
     self.conversations,
     self.current_index,
     self.draft,
   )
+  self.app_state.snapshot()
+}
+
+///|
+fn MainWindow::persist_conversation_state(
+  self : Self,
+  changed_session_ids : Array[String],
+  removed_session_ids? : Array[String],
+) -> Unit {
+  save_conversation_state(
+    self.conversation_snapshot(),
+    changed_session_ids,
+    removed_session_ids?,
+  )
+}
+
+///|
+fn MainWindow::persist_ui_state(self : Self) -> Unit {
   self.app_state.set_sidebar_state(self.sidebar_width, self.sidebar_hidden)
-  save_app_state_snapshot(self.app_state.snapshot())
+  save_ui_state(self.app_state.snapshot())
 }
 
 ///|
@@ -145,7 +163,7 @@ fn MainWindow::open_settings_dialog(self : Self) -> Unit raise NullptrError {
         dialog.current_provider_id(),
       )
       self.chat.set_provider(self.app_state.current_provider())
-      self.persist_state()
+      save_settings_state(self.app_state.snapshot())
     })
   dialog.show()
 }
@@ -160,14 +178,22 @@ fn MainWindow::sync_chat_busy(
 
 ///|
 fn MainWindow::start_new_conversation(self : Self) -> Unit raise NullptrError {
-  self.draft = Some(new_conversation_session())
+  let previous_draft_id = self.draft.map(draft => draft.id)
+  self.draft = Some(self.app_state.new_session())
   self.current_index = None
   match self.draft {
     Some(draft) => self.chat.load_tree(draft.tree)
     None => ()
   }
   self.sync_sidebar()
-  self.persist_state()
+  let changed_session_ids = match self.draft {
+    Some(draft) => [draft.id]
+    None => []
+  }
+  self.persist_conversation_state(
+    changed_session_ids,
+    removed_session_ids=previous_draft_id.map(id => [id]).unwrap_or([]),
+  )
 }
 
 ///|
@@ -195,16 +221,18 @@ fn MainWindow::select_conversation(
   self.current_index = Some(index)
   self.chat.load_tree(self.conversations[index].tree)
   self.sync_sidebar()
-  self.persist_state()
+  self.persist_conversation_state([])
 }
 
 ///|
 fn MainWindow::sync_conversation_after_mutation(
   self : Self,
 ) -> Unit raise NullptrError {
+  let changed_session_ids = []
   match self.current_index {
     Some(index) => {
       self.conversations[index].refresh_title()
+      changed_session_ids.push(self.conversations[index].id)
       self.current_index = Some(
         move_conversation_to_end(self.conversations, index),
       )
@@ -218,6 +246,7 @@ fn MainWindow::sync_conversation_after_mutation(
           }
 
           draft.refresh_title()
+          changed_session_ids.push(draft.id)
           self.conversations.push(draft)
           self.current_index = Some(self.conversations.length() - 1)
           self.draft = None
@@ -227,7 +256,7 @@ fn MainWindow::sync_conversation_after_mutation(
   }
 
   self.sync_sidebar()
-  self.persist_state()
+  self.persist_conversation_state(changed_session_ids)
 }
 
 ///|
@@ -249,7 +278,7 @@ fn MainWindow::request_sidebar_hidden(
     self.splitter.setSizes([width, 1])
   }
   self.toolbar.set_sidebar_hidden(hidden)
-  self.persist_state()
+  self.persist_ui_state()
 }
 
 ///|
@@ -272,7 +301,7 @@ fn MainWindow::sync_sidebar_state_from_splitter(
       self.toolbar.set_sidebar_hidden(false)
     }
   }
-  self.persist_state()
+  self.persist_ui_state()
 }
 
 ///|

@@ -15,6 +15,7 @@ pub(all) struct ProviderConfig {
 
 ///|
 pub(all) struct ConversationRecord {
+  id : String
   title : String
   tree : ChatTreeSnapshot
 } derive(FromJson, ToJson, Eq, Show)
@@ -28,6 +29,7 @@ pub(all) struct AppStateSnapshot {
   draft : ConversationRecord?
   sidebar_width : Int
   sidebar_hidden : Bool
+  mut next_session_id : Int
 } derive(FromJson, ToJson, Eq, Show)
 
 ///|
@@ -50,14 +52,20 @@ pub fn default_provider() -> ProviderConfig {
 ///|
 pub fn default_app_state_snapshot() -> AppStateSnapshot {
   let provider = default_provider()
+  let first_session_id = session_id_from_counter(1)
   AppStateSnapshot::{
     providers: [provider],
     current_provider_id: Some(provider.id),
     conversations: [],
     current_index: None,
-    draft: Some(conversation_record_from_session(new_conversation_session())),
+    draft: Some(
+      conversation_record_from_session(
+        new_conversation_session(first_session_id),
+      ),
+    ),
     sidebar_width: sidebar_default_width(),
     sidebar_hidden: false,
+    next_session_id: 2,
   }
 }
 
@@ -92,6 +100,16 @@ pub fn AppStateStore::current_provider(self : Self) -> ProviderConfig? {
 }
 
 ///|
+pub fn AppStateStore::new_session(self : Self) -> ConversationSession {
+  let next_session_id = normalize_next_session_id(self.snapshot.next_session_id)
+  let session = new_conversation_session(
+    session_id_from_counter(next_session_id),
+  )
+  self.snapshot.next_session_id = next_session_id + 1
+  session
+}
+
+///|
 pub fn AppStateStore::set_providers(
   self : Self,
   providers : Array[ProviderConfig],
@@ -105,6 +123,7 @@ pub fn AppStateStore::set_providers(
     draft: self.snapshot.draft.map(clone_conversation_record),
     sidebar_width: self.snapshot.sidebar_width,
     sidebar_hidden: self.snapshot.sidebar_hidden,
+    next_session_id: self.snapshot.next_session_id,
   })
 }
 
@@ -150,6 +169,7 @@ pub fn AppStateStore::set_conversation_state(
     draft: draft.map(conversation_record_from_session),
     sidebar_width: self.snapshot.sidebar_width,
     sidebar_hidden: self.snapshot.sidebar_hidden,
+    next_session_id: self.snapshot.next_session_id,
   })
 }
 
@@ -167,6 +187,7 @@ pub fn AppStateStore::set_sidebar_state(
     draft: self.snapshot.draft.map(clone_conversation_record),
     sidebar_width: width,
     sidebar_hidden: hidden,
+    next_session_id: self.snapshot.next_session_id,
   })
 }
 
@@ -177,15 +198,21 @@ fn sanitize_snapshot(snapshot : AppStateSnapshot) -> AppStateSnapshot {
     providers,
     snapshot.current_provider_id,
   )
-  let conversations = snapshot.conversations.map(clone_conversation_record)
+  let seen_ids = Map::new()
+  let (conversations, next_session_id_after_conversations) = sanitize_conversation_records(
+    snapshot.conversations,
+    seen_ids,
+    normalize_next_session_id(snapshot.next_session_id),
+  )
   let current_index = sanitize_current_index(
     conversations.length(),
     snapshot.current_index,
   )
-  let draft = sanitize_draft(
+  let (draft, next_session_id) = sanitize_draft(
     snapshot.draft,
-    conversations.length(),
     current_index,
+    seen_ids,
+    next_session_id_after_conversations,
   )
   AppStateSnapshot::{
     providers,
@@ -198,6 +225,7 @@ fn sanitize_snapshot(snapshot : AppStateSnapshot) -> AppStateSnapshot {
       max=sidebar_max_width(),
     ),
     sidebar_hidden: snapshot.sidebar_hidden,
+    next_session_id,
   }
 }
 
@@ -227,6 +255,76 @@ fn sanitize_current_provider_id(
 }
 
 ///|
+fn sanitize_conversation_records(
+  records : Array[ConversationRecord],
+  seen_ids : Map[String, Bool],
+  next_session_id : Int,
+) -> (Array[ConversationRecord], Int) {
+  let sanitized = []
+  let mut next_session_id = normalize_next_session_id(next_session_id)
+  for record in records {
+    let (next_record, next_counter) = sanitize_conversation_record(
+      record, seen_ids, next_session_id,
+    )
+    sanitized.push(next_record)
+    next_session_id = next_counter
+  }
+  (sanitized, next_session_id)
+}
+
+///|
+fn sanitize_conversation_record(
+  record : ConversationRecord,
+  seen_ids : Map[String, Bool],
+  next_session_id : Int,
+) -> (ConversationRecord, Int) {
+  let (id, next_session_id) = sanitize_session_id(
+    record.id,
+    seen_ids,
+    next_session_id,
+  )
+  (
+    ConversationRecord::{
+      id,
+      title: normalize_conversation_title(record.title),
+      tree: record.tree,
+    },
+    next_session_id,
+  )
+}
+
+///|
+fn sanitize_session_id(
+  id : String,
+  seen_ids : Map[String, Bool],
+  next_session_id : Int,
+) -> (String, Int) {
+  let trimmed_id = id.trim().to_string()
+  match session_id_counter(trimmed_id) {
+    Some(counter) if !seen_ids.contains(trimmed_id) => {
+      seen_ids.set(trimmed_id, true)
+      (trimmed_id, normalize_next_session_id(next_session_id).max(counter + 1))
+    }
+    _ => allocate_session_id(seen_ids, next_session_id)
+  }
+}
+
+///|
+fn allocate_session_id(
+  seen_ids : Map[String, Bool],
+  next_session_id : Int,
+) -> (String, Int) {
+  let counter = normalize_next_session_id(next_session_id)
+  let id = session_id_from_counter(counter)
+  if seen_ids.contains(id) {
+    allocate_session_id(seen_ids, counter + 1)
+  } else {
+    seen_ids.set(id, true)
+    (id, counter + 1)
+  }
+}
+
+///|
 fn sanitize_current_index(total : Int, current_index : Int?) -> Int? {
   match current_index {
     Some(index) if index >= 0 && index < total => Some(index)
@@ -237,23 +335,68 @@ fn sanitize_current_index(total : Int, current_index : Int?) -> Int? {
 ///|
 fn sanitize_draft(
   draft : ConversationRecord?,
-  conversation_count : Int,
   current_index : Int?,
-) -> ConversationRecord? {
+  seen_ids : Map[String, Bool],
+  next_session_id : Int,
+) -> (ConversationRecord?, Int) {
   match draft {
-    Some(record) => Some(clone_conversation_record(record))
+    Some(record) => {
+      let (draft, next_session_id) = sanitize_conversation_record(
+        record, seen_ids, next_session_id,
+      )
+      (Some(draft), next_session_id)
+    }
     None =>
       match current_index {
-        None =>
-          Some(conversation_record_from_session(new_conversation_session()))
-        Some(_) =>
-          if conversation_count == 0 {
-            Some(conversation_record_from_session(new_conversation_session()))
-          } else {
-            None
-          }
+        None => {
+          let (session_id, next_session_id) = allocate_session_id(
+            seen_ids, next_session_id,
+          )
+          (
+            Some(
+              conversation_record_from_session(
+                new_conversation_session(session_id),
+              ),
+            ),
+            next_session_id,
+          )
+        }
+        Some(_) => (None, normalize_next_session_id(next_session_id))
       }
   }
+}
+
+///|
+fn normalize_next_session_id(next_session_id : Int) -> Int {
+  if next_session_id < 1 {
+    1
+  } else {
+    next_session_id
+  }
+}
+
+///|
+fn session_id_from_counter(counter : Int) -> String {
+  "session-\{normalize_next_session_id(counter)}"
+}
+
+///|
+fn session_id_counter(id : String) -> Int? {
+  let prefix = "session-"
+  guard id.has_prefix(prefix) else { None }
+
+  let suffix = id[prefix.length():].to_string()
+  guard !suffix.is_blank() else { None }
+
+  let mut value = 0
+  for ch in suffix {
+    if !ch.is_digit(10) {
+      return None
+    }
+    value = value * 10 + (ch.to_int() - '0'.to_int())
+  }
+  guard value >= 1 else { None }
+  Some(value)
 }
 
 ///|
@@ -301,7 +444,11 @@ fn find_provider_by_id(
 fn conversation_record_from_session(
   session : ConversationSession,
 ) -> ConversationRecord {
-  ConversationRecord::{ title: session.title, tree: session.tree.snapshot() }
+  ConversationRecord::{
+    id: session.id,
+    title: session.title,
+    tree: session.tree.snapshot(),
+  }
 }
 
 ///|
@@ -309,6 +456,7 @@ fn conversation_session_from_record(
   record : ConversationRecord,
 ) -> ConversationSession {
   ConversationSession::{
+    id: record.id,
     title: normalize_conversation_title(record.title),
     tree: ChatTree::from_snapshot(record.tree),
   }
@@ -328,7 +476,7 @@ fn clone_provider_config(provider : ProviderConfig) -> ProviderConfig {
 
 ///|
 fn clone_conversation_record(record : ConversationRecord) -> ConversationRecord {
-  ConversationRecord::{ title: record.title, tree: record.tree }
+  ConversationRecord::{ id: record.id, title: record.title, tree: record.tree }
 }
 
 ///|
@@ -341,6 +489,7 @@ fn clone_snapshot(snapshot : AppStateSnapshot) -> AppStateSnapshot {
     draft: snapshot.draft.map(clone_conversation_record),
     sidebar_width: snapshot.sidebar_width,
     sidebar_hidden: snapshot.sidebar_hidden,
+    next_session_id: snapshot.next_session_id,
   }
 }
 
