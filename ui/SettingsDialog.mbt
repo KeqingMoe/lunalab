@@ -20,9 +20,11 @@ let settings_dialog_style : String =
   #|}
   #|
   #|QLabel#SettingsTitle {
+  #|  background: transparent;
   #|  color: #101828;
   #|  font-size: 18px;
   #|  font-weight: 800;
+  #|  border: none;
   #|}
   #|
   #|QLabel#SettingsHint,
@@ -49,12 +51,42 @@ let settings_dialog_style : String =
   #|  min-height: 38px;
   #|}
   #|
+  #|QComboBox#SettingsProviderSelect {
+  #|  combobox-popup: 0;
+  #|  padding: 0 42px 0 12px;
+  #|}
+  #|
   #|QComboBox#SettingsProviderSelect:focus,
   #|QLineEdit#SettingsNameInput:focus,
   #|QLineEdit#SettingsBaseUrlInput:focus,
   #|QLineEdit#SettingsModelInput:focus,
   #|QLineEdit#SettingsApiKeyInput:focus {
   #|  border-color: #84adff;
+  #|}
+  #|
+  #|QComboBox#SettingsProviderSelect::drop-down {
+  #|  subcontrol-origin: padding;
+  #|  subcontrol-position: top right;
+  #|  width: 34px;
+  #|  border-left: 1px solid #d0d5dd;
+  #|  border-top-right-radius: 10px;
+  #|  border-bottom-right-radius: 10px;
+  #|  background: #f8fafc;
+  #|}
+  #|
+  #|QComboBox#SettingsProviderSelect:hover::drop-down {
+  #|  background: #f2f4f7;
+  #|}
+  #|
+  #|QComboBox#SettingsProviderSelect:focus::drop-down,
+  #|QComboBox#SettingsProviderSelect:on::drop-down {
+  #|  border-left-color: #84adff;
+  #|  background: #eef4ff;
+  #|}
+  #|
+  #|QComboBox#SettingsProviderSelect::down-arrow {
+  #|  width: 12px;
+  #|  height: 8px;
   #|}
   #|
   #|QPushButton#SettingsAddButton,
