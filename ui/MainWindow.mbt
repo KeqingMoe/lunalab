@@ -66,11 +66,16 @@ pub fn MainWindow::new() -> Self {
     }
 
     match window.current_index {
-      Some(index) if index >= 0 && index < window.conversations.length() =>
+      Some(index) if index >= 0 && index < window.conversations.length() => {
         window.chat.load_tree(window.conversations[index].tree)
+        window.tree.load_tree(window.conversations[index].tree)
+      }
       _ =>
         match window.draft {
-          Some(draft) => window.chat.load_tree(draft.tree)
+          Some(draft) => {
+            window.chat.load_tree(draft.tree)
+            window.tree.load_tree(draft.tree)
+          }
           None => ()
         }
     }
@@ -92,6 +97,9 @@ pub fn MainWindow::new() -> Self {
     let _ = window.chat
       .conversation_mutated()
       .connect(_ => window.sync_conversation_after_mutation())
+    let _ = window.tree
+      .tree_changed()
+      .connect(_ => window.sync_conversation_after_tree_change())
     let _ = window.chat
       .busy_changed()
       .connect(busy => window.sync_chat_busy(busy))
@@ -182,7 +190,10 @@ fn MainWindow::start_new_conversation(self : Self) -> Unit raise NullptrError {
   self.draft = Some(self.app_state.new_session())
   self.current_index = None
   match self.draft {
-    Some(draft) => self.chat.load_tree(draft.tree)
+    Some(draft) => {
+      self.chat.load_tree(draft.tree)
+      self.tree.load_tree(draft.tree)
+    }
     None => ()
   }
   self.sync_sidebar()
@@ -220,6 +231,7 @@ fn MainWindow::select_conversation(
   self.draft = None
   self.current_index = Some(index)
   self.chat.load_tree(self.conversations[index].tree)
+  self.tree.load_tree(self.conversations[index].tree)
   self.sync_sidebar()
   self.persist_conversation_state([])
 }
@@ -256,7 +268,30 @@ fn MainWindow::sync_conversation_after_mutation(
   }
 
   self.sync_sidebar()
+  self.sync_tree_page()
   self.persist_conversation_state(changed_session_ids)
+}
+
+///|
+fn MainWindow::sync_conversation_after_tree_change(
+  self : Self,
+) -> Unit raise NullptrError {
+  match self.current_index {
+    Some(index) => {
+      self.chat.load_tree(self.conversations[index].tree)
+      self.tree.load_tree(self.conversations[index].tree)
+      self.persist_conversation_state([self.conversations[index].id])
+    }
+    None =>
+      match self.draft {
+        Some(draft) => {
+          self.chat.load_tree(draft.tree)
+          self.tree.load_tree(draft.tree)
+          self.persist_conversation_state([draft.id])
+        }
+        None => ()
+      }
+  }
 }
 
 ///|
@@ -310,6 +345,19 @@ fn MainWindow::sync_sidebar(self : Self) -> Unit raise NullptrError {
     conversation_titles_for_sidebar(self.conversations),
     sidebar_display_index(self.conversations.length(), self.current_index),
   )
+}
+
+///|
+fn MainWindow::sync_tree_page(self : Self) -> Unit raise NullptrError {
+  match self.current_index {
+    Some(index) if index >= 0 && index < self.conversations.length() =>
+      self.tree.load_tree(self.conversations[index].tree)
+    _ =>
+      match self.draft {
+        Some(draft) => self.tree.load_tree(draft.tree)
+        None => self.tree.load_tree(new_chat_tree())
+      }
+  }
 }
 
 ///|
