@@ -34,6 +34,15 @@ priv struct PersistedConversationSnapshot {
 fn app_state_dir() -> String {
   match @env.get_env_var(app_state_dir_env_key) {
     Some(path) if !path.trim().is_blank() => path.trim().to_string()
+    _ => default_app_state_dir()
+  }
+}
+
+///|
+fn default_app_state_dir() -> String {
+  match @env.get_env_var("HOME") {
+    Some(home) if !home.trim().is_blank() =>
+      home.trim().to_string() + "/.lunalab"
     _ => ".lunalab"
   }
 }
