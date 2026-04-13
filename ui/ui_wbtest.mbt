@@ -67,3 +67,25 @@ test "provider request helpers validate config and parse response" {
     ).contains("bad key"),
   )
 }
+
+///|
+test "manual conversation title is preserved after further mutations" {
+  let session = new_conversation_session("session-1")
+  ignore(session.tree.commit(Message::user("第一条消息")))
+  session.refresh_title()
+  assert_eq(session.title, "第一条消息")
+
+  session.rename("手动标题")
+  ignore(session.tree.commit(Message::assistant("助手回复")))
+  session.refresh_title()
+
+  assert_eq(session.title, "手动标题")
+  assert_eq(session.auto_title, "第一条消息")
+}
+
+///|
+test "current index shifts predictably after deleting a conversation" {
+  assert_eq(current_index_after_conversation_removed(3, Some(2), 1), Some(1))
+  assert_eq(current_index_after_conversation_removed(3, Some(1), 1), Some(1))
+  assert_eq(current_index_after_conversation_removed(1, Some(0), 0), None)
+}

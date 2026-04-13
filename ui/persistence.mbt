@@ -25,6 +25,8 @@ priv struct ConversationIndexSnapshot {
 priv struct PersistedConversationSnapshot {
   id : String
   title : String
+  auto_title : String?
+  manual_title : Bool?
   tree : ChatTreeSnapshot
 } derive(FromJson, ToJson)
 
@@ -195,6 +197,8 @@ fn load_conversation_record(session_id : String) -> ConversationRecord? {
       Some(ConversationRecord::{
         id: session_id,
         title: snapshot.title,
+        auto_title: snapshot.auto_title,
+        manual_title: snapshot.manual_title,
         tree: snapshot.tree,
       })
     None => None
@@ -206,6 +210,8 @@ fn save_conversation_record(record : ConversationRecord) -> Unit {
   write_json_file(conversation_state_path(record.id), PersistedConversationSnapshot::{
     id: record.id,
     title: record.title,
+    auto_title: record.auto_title,
+    manual_title: record.manual_title,
     tree: record.tree,
   })
 }

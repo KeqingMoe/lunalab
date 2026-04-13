@@ -2,11 +2,14 @@
 pub struct LeftSidebar {
   root : QWidget
   count_label : QLabel
+  rename_current : QPushButton
+  delete_current : QPushButton
   new_chat : QPushButton
   list : QBoxLayout
   buttons : QButtonGroup
   mut rows : Array[QPushButton]
   mut interactions_enabled : Bool
+  mut has_selection : Bool
 }
 
 ///|
@@ -30,6 +33,8 @@ let sidebar_style : String =
   #|  font-weight: 600;
   #|}
   #|
+  #|QPushButton#SidebarHeaderActionButton,
+  #|QPushButton#SidebarHeaderDeleteButton,
   #|QPushButton#SidebarNewChatButton {
   #|  background: #ffffff;
   #|  color: #344054;
@@ -41,14 +46,37 @@ let sidebar_style : String =
   #|  text-align: center;
   #|}
   #|
+  #|QPushButton#SidebarHeaderDeleteButton {
+  #|  color: #b42318;
+  #|}
+  #|
+  #|QPushButton#SidebarHeaderActionButton:hover,
   #|QPushButton#SidebarNewChatButton:hover {
   #|  background: #f9fbff;
   #|  border-color: #c7d7fe;
   #|}
   #|
+  #|QPushButton#SidebarHeaderDeleteButton:hover {
+  #|  background: #fef3f2;
+  #|  border-color: #fecdca;
+  #|}
+  #|
+  #|QPushButton#SidebarHeaderActionButton:pressed,
   #|QPushButton#SidebarNewChatButton:pressed {
   #|  background: #eef2f6;
   #|  border-color: #c7d7fe;
+  #|}
+  #|
+  #|QPushButton#SidebarHeaderDeleteButton:pressed {
+  #|  background: #fceae8;
+  #|  border-color: #fecdca;
+  #|}
+  #|
+  #|QPushButton#SidebarHeaderActionButton:disabled,
+  #|QPushButton#SidebarHeaderDeleteButton:disabled {
+  #|  color: #98a2b3;
+  #|  background: #ffffff;
+  #|  border-color: #e4e7ec;
   #|}
   #|
   #|QScrollArea#SidebarScroll {
@@ -129,6 +157,14 @@ pub fn LeftSidebar::new() -> Self {
     count_label.setObjectName("SidebarCount")
     count_label.setText("0 个")
 
+    let rename_current = sidebar_header_action_button(
+      "SidebarHeaderActionButton", "✎", "修改当前会话名称",
+    )
+
+    let delete_current = sidebar_header_action_button(
+      "SidebarHeaderDeleteButton", "×", "删除当前会话",
+    )
+
     let new_chat = QPushButton::new()
     new_chat.setObjectName("SidebarNewChatButton")
     new_chat.setText("＋")
@@ -140,8 +176,12 @@ pub fn LeftSidebar::new() -> Self {
     header.addWidget(heading)
     header.addStretch(stretch=1)
     header.addWidget(count_label)
+    header.addWidget(rename_current)
+    header.addWidget(delete_current)
     header.addWidget(new_chat)
     let _ = header.setAlignment(count_label, Alignment::v(Center))
+    let _ = header.setAlignment(rename_current, Alignment::v(Center))
+    let _ = header.setAlignment(delete_current, Alignment::v(Center))
     let _ = header.setAlignment(new_chat, Alignment::v(Center))
 
     let list = QBoxLayout::vertical()
@@ -179,17 +219,24 @@ pub fn LeftSidebar::new() -> Self {
     let buttons = QButtonGroup::newWithParent(root)
     buttons.setExclusive(false)
 
+    rename_current.setFlat(true)
+    rename_current.setFocusPolicy(No)
+    delete_current.setFlat(true)
+    delete_current.setFocusPolicy(No)
     new_chat.setFlat(true)
     new_chat.setFocusPolicy(No)
 
     LeftSidebar::{
       root,
       count_label,
+      rename_current,
+      delete_current,
       new_chat,
       list,
       buttons,
       rows: [],
       interactions_enabled: true,
+      has_selection: false,
     }
   })
 }
@@ -207,6 +254,10 @@ pub fn LeftSidebar::set_state(
   titles : Array[String],
   current_index : Int?,
 ) -> Unit raise NullptrError {
+  self.has_selection = match current_index {
+    Some(index) => index >= 0 && index < titles.length()
+    None => false
+  }
   self.rebuild_rows(titles)
   self.apply_count(titles.length())
   self.apply_selection(current_index)
@@ -218,6 +269,20 @@ pub fn LeftSidebar::conversation_selected(
   self : Self,
 ) -> Signal[Int] raise NullptrError {
   self.buttons.idClicked()
+}
+
+///|
+pub fn LeftSidebar::conversation_rename_requested(
+  self : Self,
+) -> Signal[Bool] raise NullptrError {
+  self.rename_current.clicked()
+}
+
+///|
+pub fn LeftSidebar::conversation_delete_requested(
+  self : Self,
+) -> Signal[Bool] raise NullptrError {
+  self.delete_current.clicked()
 }
 
 ///|
@@ -247,6 +312,7 @@ fn LeftSidebar::rebuild_rows(
     button.setMinimumWidth(0)
     button.setSizePolicy(QSizePolicy::new(Ignored, Fixed))
     button.setEnabled(self.interactions_enabled)
+
     self.buttons.addButton(button, id=i)
     self.list.insertWidget(i, button)
     self.rows.push(button)
@@ -289,10 +355,29 @@ fn LeftSidebar::apply_count(
 fn LeftSidebar::apply_interactions_enabled(
   self : Self,
 ) -> Unit raise NullptrError {
+  let can_manage_selected = self.interactions_enabled && self.has_selection
   self.new_chat.setEnabled(self.interactions_enabled)
+  self.rename_current.setEnabled(can_manage_selected)
+  self.delete_current.setEnabled(can_manage_selected)
   for row in self.rows {
     row.setEnabled(self.interactions_enabled)
   }
+}
+
+///|
+fn sidebar_header_action_button(
+  object_name : String,
+  text : String,
+  tooltip : String,
+) -> QPushButton raise NullptrError {
+  let button = QPushButton::new()
+  button.setObjectName(object_name)
+  button.setText(text)
+  button.setToolTip(tooltip)
+  button.setFlat(true)
+  button.setFocusPolicy(No)
+  button.setFixedSize(28, 28)
+  button
 }
 
 ///|

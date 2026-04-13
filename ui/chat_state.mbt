@@ -2,6 +2,8 @@
 struct ConversationSession {
   id : String
   mut title : String
+  mut auto_title : String
+  mut manual_title : Bool
   tree : ChatTree
 }
 
@@ -18,9 +20,12 @@ fn new_chat_tree() -> ChatTree {
 
 ///|
 fn new_conversation_session(id : String) -> ConversationSession {
+  let title = default_conversation_title()
   ConversationSession::{
     id,
-    title: default_conversation_title(),
+    title,
+    auto_title: title,
+    manual_title: false,
     tree: new_chat_tree(),
   }
 }
@@ -104,7 +109,17 @@ fn normalize_conversation_title(text : String) -> String {
 
 ///|
 fn ConversationSession::refresh_title(self : Self) -> Unit {
-  self.title = conversation_title_from_tree(self.tree)
+  let next_title = conversation_title_from_tree(self.tree)
+  if !self.manual_title {
+    self.title = next_title
+  }
+  self.auto_title = next_title
+}
+
+///|
+fn ConversationSession::rename(self : Self, title : String) -> Unit {
+  self.title = normalize_conversation_title(title)
+  self.manual_title = true
 }
 
 ///|
@@ -134,6 +149,27 @@ fn move_conversation_to_end(
   let session = conversations.remove(index)
   conversations.push(session)
   conversations.length() - 1
+}
+
+///|
+fn current_index_after_conversation_removed(
+  total : Int,
+  current_index : Int?,
+  removed_index : Int,
+) -> Int? {
+  guard removed_index >= 0 else { current_index }
+  guard removed_index < total else { current_index }
+
+  let next_total = total - 1
+  guard next_total > 0 else { None }
+
+  match current_index {
+    Some(index) if index == removed_index =>
+      Some(removed_index.min(next_total - 1))
+    Some(index) if index > removed_index => Some(index - 1)
+    Some(index) if index >= 0 && index < total => Some(index)
+    _ => None
+  }
 }
 
 ///|

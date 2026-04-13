@@ -202,6 +202,8 @@ fn persisted_conversation_fixture(
   PersistedConversationSnapshot::{
     id,
     title,
+    auto_title: Some(title),
+    manual_title: Some(false),
     tree: conversation_tree_snapshot(user_content, assistant_content),
   }
   .to_json()

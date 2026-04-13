@@ -106,6 +106,12 @@ pub fn MainWindow::new() -> Self {
     let _ = window.sidebar
       .conversation_selected()
       .connect(index => window.select_conversation_from_sidebar(index))
+    let _ = window.sidebar
+      .conversation_rename_requested()
+      .connect(_ => window.request_selected_conversation_rename())
+    let _ = window.sidebar
+      .conversation_delete_requested()
+      .connect(_ => window.request_selected_conversation_delete())
     let _ = window.toolbar
       .sidebar_toggled()
       .connect(hidden => window.request_sidebar_hidden(hidden))
@@ -234,6 +240,102 @@ fn MainWindow::select_conversation(
   self.tree.load_tree(self.conversations[index].tree)
   self.sync_sidebar()
   self.persist_conversation_state([])
+}
+
+///|
+fn MainWindow::request_selected_conversation_rename(
+  self : Self,
+) -> Unit raise NullptrError {
+  guard self.current_index is Some(index) else { () }
+  guard index >= 0 && index < self.conversations.length() else { () }
+
+  let dialog = ConversationTitleDialog::new(self.conversations[index].title)
+  dialog.as_dialog().setParent(self.root)
+  let _ = dialog
+    .as_dialog()
+    .accepted()
+    .connect(_ => {
+      self.rename_conversation(index, dialog.title())
+      dialog.as_dialog().deleteLater()
+    })
+  let _ = dialog
+    .as_dialog()
+    .rejected()
+    .connect(_ => dialog.as_dialog().deleteLater())
+  dialog.show()
+}
+
+///|
+fn MainWindow::rename_conversation(
+  self : Self,
+  index : Int,
+  title : String,
+) -> Unit raise NullptrError {
+  guard index >= 0 else { () }
+  guard index < self.conversations.length() else { () }
+
+  self.conversations[index].rename(title)
+  self.sync_sidebar()
+  self.persist_conversation_state([self.conversations[index].id])
+}
+
+///|
+fn MainWindow::request_selected_conversation_delete(
+  self : Self,
+) -> Unit raise NullptrError {
+  guard self.current_index is Some(index) else { () }
+  self.delete_conversation(index)
+}
+
+///|
+fn MainWindow::delete_conversation(
+  self : Self,
+  index : Int,
+) -> Unit raise NullptrError {
+  guard index >= 0 else { () }
+  guard index < self.conversations.length() else { () }
+
+  let removed = self.conversations.remove(index)
+  self.current_index = current_index_after_conversation_removed(
+    self.conversations.length() + 1,
+    self.current_index,
+    index,
+  )
+
+  match self.current_index {
+    Some(current) if current >= 0 && current < self.conversations.length() => {
+      self.chat.load_tree(self.conversations[current].tree)
+      self.tree.load_tree(self.conversations[current].tree)
+    }
+    _ =>
+      match self.draft {
+        Some(draft) => {
+          self.current_index = None
+          self.chat.load_tree(draft.tree)
+          self.tree.load_tree(draft.tree)
+        }
+        None => {
+          self.current_index = None
+          self.draft = Some(self.app_state.new_session())
+          match self.draft {
+            Some(draft) => {
+              self.chat.load_tree(draft.tree)
+              self.tree.load_tree(draft.tree)
+            }
+            None => ()
+          }
+        }
+      }
+  }
+
+  self.sync_sidebar()
+  let changed_session_ids = match self.draft {
+    Some(draft) if self.current_index is None => [draft.id]
+    _ => []
+  }
+  self.persist_conversation_state(changed_session_ids, removed_session_ids=[
+    removed.id,
+  ])
 }
 
 ///|

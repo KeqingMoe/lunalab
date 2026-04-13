@@ -17,6 +17,8 @@ pub(all) struct ProviderConfig {
 pub(all) struct ConversationRecord {
   id : String
   title : String
+  auto_title : String?
+  manual_title : Bool?
   tree : ChatTreeSnapshot
 } derive(FromJson, ToJson, Eq, Show)
 
@@ -287,6 +289,10 @@ fn sanitize_conversation_record(
     ConversationRecord::{
       id,
       title: normalize_conversation_title(record.title),
+      auto_title: Some(
+        normalize_conversation_title(record.auto_title.unwrap_or(record.title)),
+      ),
+      manual_title: Some(record.manual_title.unwrap_or(false)),
       tree: record.tree,
     },
     next_session_id,
@@ -447,6 +453,8 @@ fn conversation_record_from_session(
   ConversationRecord::{
     id: session.id,
     title: session.title,
+    auto_title: Some(session.auto_title),
+    manual_title: Some(session.manual_title),
     tree: session.tree.snapshot(),
   }
 }
@@ -458,6 +466,10 @@ fn conversation_session_from_record(
   ConversationSession::{
     id: record.id,
     title: normalize_conversation_title(record.title),
+    auto_title: normalize_conversation_title(
+      record.auto_title.unwrap_or(record.title),
+    ),
+    manual_title: record.manual_title.unwrap_or(false),
     tree: ChatTree::from_snapshot(record.tree),
   }
 }
@@ -476,7 +488,13 @@ fn clone_provider_config(provider : ProviderConfig) -> ProviderConfig {
 
 ///|
 fn clone_conversation_record(record : ConversationRecord) -> ConversationRecord {
-  ConversationRecord::{ id: record.id, title: record.title, tree: record.tree }
+  ConversationRecord::{
+    id: record.id,
+    title: record.title,
+    auto_title: record.auto_title,
+    manual_title: record.manual_title,
+    tree: record.tree,
+  }
 }
 
 ///|
