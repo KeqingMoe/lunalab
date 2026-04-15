@@ -5,6 +5,8 @@ pub struct ChatView {
   content : QWidget
   list : QBoxLayout
   mut rows : Array[QWidget]
+  mut body_labels : Array[QLabel]
+  mut node_ids : Array[String]
 }
 
 ///|
@@ -97,8 +99,15 @@ pub fn ChatView::new() -> Self {
     root.setLayout(layout)
     root.setStyleSheet(chat_view_style)
 
-    let view = ChatView::{ root, scroll, content, list, rows: [] }
-    view.set_messages([])
+    let view = ChatView::{
+      root,
+      scroll,
+      content,
+      list,
+      rows: [],
+      body_labels: [],
+      node_ids: [],
+    }
     view
   })
 }
@@ -106,18 +115,50 @@ pub fn ChatView::new() -> Self {
 ///|
 pub fn ChatView::set_messages(
   self : Self,
-  messages : Array[Message],
+  tree : ChatTree,
+  node_ids : Array[String],
 ) -> Unit raise NullptrError {
   self.clear_rows()
 
-  if messages.length() == 0 {
+  if node_ids.length() == 0 {
     self.push_empty_row(build_empty_state())
   } else {
-    for i in 0..<messages.length() {
-      self.push_row(build_message_row(messages[i], i))
+    for i in 0..<node_ids.length() {
+      let node_id = node_ids[i]
+      match tree.get_node(node_id) {
+        Some(node) => {
+          let content = tree.node_display_content(node_id).unwrap_or("")
+          let (row, body) = build_message_row_from_node(node, content, i)
+          self.push_row(row, body)
+        }
+        None => ()
+      }
     }
   }
 
+  self.node_ids = node_ids.copy()
+
+  self.scroll_to_bottom()
+}
+
+///|
+pub fn ChatView::update_streaming_message(
+  self : Self,
+  node_id : String,
+  content : String,
+) -> Unit raise NullptrError {
+  let index = find_node_index(self.node_ids, node_id)
+  match index {
+    Some(i) if i >= 0 && i < self.body_labels.length() => {
+      self.body_labels[i].setText(content)
+      self.scroll_to_bottom()
+    }
+    _ => ()
+  }
+}
+
+///|
+fn ChatView::scroll_to_bottom(self : Self) -> Unit raise NullptrError {
   if self.rows.length() > 0 {
     self.scroll.ensureWidgetVisible(
       self.rows[self.rows.length() - 1],
@@ -127,9 +168,14 @@ pub fn ChatView::set_messages(
 }
 
 ///|
-fn ChatView::push_row(self : Self, row : QWidget) -> Unit raise NullptrError {
+fn ChatView::push_row(
+  self : Self,
+  row : QWidget,
+  body : QLabel,
+) -> Unit raise NullptrError {
   self.list.insertWidget(self.list.count() - 1, row)
   self.rows.push(row)
+  self.body_labels.push(body)
 }
 
 ///|
@@ -148,12 +194,27 @@ fn ChatView::clear_rows(self : Self) -> Unit raise NullptrError {
     row.deleteLater()
   }
   self.rows = []
+  self.body_labels = []
 }
 
 ///|
-fn build_message_row(msg : Message, index : Int) -> QWidget {
+fn find_node_index(node_ids : Array[String], target_id : String) -> Int? {
+  for i in 0..<node_ids.length() {
+    if node_ids[i] == target_id {
+      return Some(i)
+    }
+  }
+  None
+}
+
+///|
+fn build_message_row_from_node(
+  node : ChatNode,
+  content : String,
+  index : Int,
+) -> (QWidget, QLabel) {
   try! ({
-    let role = role_text(msg.role)
+    let role = role_text(node.message.role)
 
     let header = QBoxLayout::horizontal()
     header.setContentsMargins(0, 0, 0, 0)
@@ -175,7 +236,7 @@ fn build_message_row(msg : Message, index : Int) -> QWidget {
     body.setObjectName("MessageBody")
     body.setTextFormat(Plain)
     body.setWordWrap(true)
-    body.setText(msg.content)
+    body.setText(content)
 
     let card_layout = QBoxLayout::vertical()
     card_layout.setContentsMargins(14, 12, 14, 12)
@@ -184,7 +245,7 @@ fn build_message_row(msg : Message, index : Int) -> QWidget {
     card_layout.addWidget(body)
 
     let card = QWidget::new()
-    card.setObjectName(role_card_name(msg.role))
+    card.setObjectName(role_card_name(node.message.role))
     card.setMaximumWidth(720)
     card.setLayout(card_layout)
 
@@ -192,7 +253,7 @@ fn build_message_row(msg : Message, index : Int) -> QWidget {
     row_layout.setContentsMargins(0, 0, 0, 0)
     row_layout.setSpacing(12)
 
-    if msg.role is User {
+    if node.message.role is User {
       row_layout.addStretch(stretch=1)
       row_layout.addWidget(card)
     } else {
@@ -203,7 +264,7 @@ fn build_message_row(msg : Message, index : Int) -> QWidget {
     let row = QWidget::new()
     row.setObjectName("MessageRow")
     row.setLayout(row_layout)
-    row
+    (row, body)
   })
 }
 

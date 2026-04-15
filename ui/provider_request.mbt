@@ -33,31 +33,8 @@ fn provider_request_url(provider : ProviderConfig) -> String {
 }
 
 ///|
-fn build_provider_chat_request_body(
-  provider : ProviderConfig,
-  messages : Array[Message],
-) -> ProviderRequestPayload {
-  let body = Json::object(
-    Map::from_array([
-      ("model", Json::string(provider.model.trim().to_string())),
-      ("messages", Json::array(messages.map(message_to_json))),
-    ]),
-  ).stringify()
-  @utf8.encode(body)
-}
-
-///|
 fn provider_auth_header_value(provider : ProviderConfig) -> Bytes {
   @utf8.encode("Bearer \{provider.api_key.trim().to_string()}")
-}
-
-///|
-fn extract_provider_response_text(raw_text : String) -> String {
-  let parse_result : Result[Json, _] = try? @json.parse(raw_text)
-  match parse_result {
-    Ok(json) => extract_message_content(json).unwrap_or(raw_text)
-    Err(_) => raw_text
-  }
 }
 
 ///|
@@ -100,38 +77,6 @@ fn summarize_provider_error_payload(raw_text : String) -> String {
 }
 
 ///|
-fn extract_message_content(json : Json) -> String? {
-  guard json is Object(root) else { None }
-  guard root.get("choices") is Some(Array(choices)) else { None }
-  guard choices.length() > 0 else { None }
-  guard choices[0] is Object(choice) else { None }
-  guard choice.get("message") is Some(Object(message)) else { None }
-  message_json_content_to_text(message.get("content"))
-}
-
-///|
-fn message_json_content_to_text(content : Json?) -> String? {
-  match content {
-    Some(String(text)) => Some(text)
-    Some(Array(items)) => {
-      let segments = items.filter_map(item => {
-        guard item is Object(entry) else { None }
-        match entry.get("text") {
-          Some(String(text)) => Some(text)
-          _ => None
-        }
-      })
-      if segments.length() == 0 {
-        None
-      } else {
-        Some(segments.join("\n"))
-      }
-    }
-    _ => None
-  }
-}
-
-///|
 fn extract_error_message(json : Json) -> String? {
   guard json is Object(root) else { None }
   match root.get("error") {
@@ -161,5 +106,81 @@ fn provider_role_name(role : Role) -> String {
     System => "system"
     User => "user"
     Assistant => "assistant"
+  }
+}
+
+///|
+struct SSEChunk {
+  contents : Array[String]
+  is_done : Bool
+}
+
+///|
+pub fn build_provider_stream_request_body(
+  provider : ProviderConfig,
+  messages : Array[Message],
+) -> ProviderRequestPayload {
+  let body = Json::object(
+    Map::from_array([
+      ("model", Json::string(provider.model.trim().to_string())),
+      ("messages", Json::array(messages.map(message_to_json))),
+      ("stream", Json::boolean(true)),
+    ]),
+  ).stringify()
+  @utf8.encode(body)
+}
+
+///|
+pub fn parse_sse_chunk(buffer : String) -> (SSEChunk, String) {
+  let lines = buffer.split("\n")
+  let contents = []
+  let mut is_done = false
+  let mut remaining = ""
+
+  for line in lines {
+    let trimmed = line.trim().to_string()
+    if trimmed.has_prefix("data: ") {
+      let data = trimmed.replace(old="data: ", new="")
+      if data == "[DONE]" {
+        is_done = true
+        continue
+      }
+      try @json.parse(data) catch {
+        _ => remaining = remaining + line.to_string() + "\n"
+      } noraise {
+        json =>
+          match extract_delta_content(json) {
+            Some(content) => contents.push(content)
+            None => ()
+          }
+      }
+    } else if !trimmed.is_blank() {
+      remaining = remaining + line.to_string() + "\n"
+    }
+  }
+
+  (SSEChunk::{ contents, is_done }, remaining)
+}
+
+///|
+fn extract_delta_content(json : Json) -> String? {
+  guard json is Object(root) else { None }
+  guard root.get("choices") is Some(Array(choices)) else { None }
+  guard choices.length() > 0 else { None }
+  guard choices[0] is Object(choice) else { None }
+  guard choice.get("delta") is Some(Object(delta)) else { None }
+  let content = match delta.get("content") {
+    Some(String(text)) => text
+    _ => ""
+  }
+  let reasoning = match delta.get("reasoning") {
+    Some(String(text)) => text
+    _ => ""
+  }
+  let combined = content + reasoning
+  if combined.is_blank() {
+    None
+  } else {
+    Some(combined)
   }
 }

@@ -57,6 +57,14 @@ fn conversation_messages(tree : ChatTree) -> Array[Message] {
 }
 
 ///|
+fn conversation_node_ids(tree : ChatTree) -> Array[String] {
+  match tree.head_id() {
+    Some(head_id) => tree.path_to(head_id)
+    None => []
+  }
+}
+
+///|
 fn conversation_has_messages(tree : ChatTree) -> Bool {
   conversation_messages(tree).length() > 0
 }

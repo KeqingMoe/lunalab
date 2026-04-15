@@ -47,14 +47,6 @@ test "provider request helpers validate config and parse response" {
   }
 
   assert_eq(provider_missing_config_message(Some(provider)), None)
-  assert_eq(
-    extract_provider_response_text(
-      (
-        #|{"choices":[{"message":{"content":"hello"}}]}
-      ),
-    ),
-    "hello",
-  )
   assert_true(
     provider_failure_message(
       provider,

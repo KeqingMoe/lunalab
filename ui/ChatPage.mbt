@@ -8,6 +8,8 @@ pub struct ChatPage {
   manager : QNetworkAccessManager
   mutation_notifier : QPushButton
   busy_notifier : QPushButton
+  mut stream_buffer : String
+  mut streaming_node_id : String?
 }
 
 ///|
@@ -48,6 +50,8 @@ pub fn ChatPage::new() -> Self {
       manager,
       mutation_notifier,
       busy_notifier,
+      stream_buffer: "",
+      streaming_node_id: None,
     }
 
     let _ = page.composer.send_clicked().connect(_ => page.submit_message())
@@ -134,7 +138,7 @@ fn ChatPage::generate_assistant_message(self : Self) -> Unit raise NullptrError 
 
 ///|
 fn ChatPage::sync_view(self : Self) -> Unit raise NullptrError {
-  self.chat_view.set_messages(conversation_messages(self.tree))
+  self.chat_view.set_messages(self.tree, conversation_node_ids(self.tree))
   self.composer.set_branch_hint(head_hint(self.tree))
   self.composer.set_send_enabled(self.composer.has_text())
 }
@@ -154,8 +158,17 @@ fn ChatPage::request_assistant_message(
     }
     None => {
       let provider = self.provider.unwrap()
+
+      let node_id = target_tree.commit(Message::assistant(""))
+      ignore(target_tree.start_streaming(node_id))
+      self.streaming_node_id = Some(node_id)
+
+      if physical_equal(self.tree, target_tree) {
+        self.sync_view()
+      }
+
       let request = QNetworkRequest::new(provider_request_url(provider))
-      let body = build_provider_chat_request_body(
+      let body = build_provider_stream_request_body(
         provider,
         target_tree.context_messages(),
       )
@@ -169,40 +182,98 @@ fn ChatPage::request_assistant_message(
       )
 
       self.set_busy(true)
+      self.stream_buffer = ""
 
       let reply = self.manager.post(request, body)
+
+      let _ = reply
+        .readyRead()
+        .connect(_ => self.handle_ready_read(reply, target_tree, provider))
       let _ = reply
         .finished()
-        .connect(_ => {
-          self.finish_assistant_request(reply, target_tree, provider)
-        })
+        .connect(_ => self.finish_streaming(reply, target_tree, provider))
     }
   }
 }
 
 ///|
-fn ChatPage::finish_assistant_request(
+fn ChatPage::handle_ready_read(
   self : Self,
   reply : QNetworkReply,
   target_tree : ChatTree,
   provider : ProviderConfig,
 ) -> Unit raise NullptrError {
-  let raw_text = @utf8.decode_lossy(reply.readAll())
-  let assistant_text = if reply.error() is NoError {
-    extract_provider_response_text(raw_text)
+  let chunk = @utf8.decode_lossy(reply.readAll())
+  self.stream_buffer = self.stream_buffer + chunk
+
+  let (sse_chunk, remaining) = parse_sse_chunk(self.stream_buffer)
+  self.stream_buffer = remaining
+
+  for content in sse_chunk.contents {
+    match self.streaming_node_id {
+      Some(node_id) => {
+        ignore(target_tree.append_streaming_content(node_id, content))
+        if physical_equal(self.tree, target_tree) {
+          let display_content = target_tree
+            .node_display_content(node_id)
+            .unwrap_or("")
+          self.chat_view.update_streaming_message(node_id, display_content)
+        }
+      }
+      None => ()
+    }
+  }
+
+  if sse_chunk.is_done {
+    self.finish_streaming(reply, target_tree, provider)
+  }
+}
+
+///|
+fn ChatPage::finish_streaming(
+  self : Self,
+  reply : QNetworkReply,
+  target_tree : ChatTree,
+  provider : ProviderConfig,
+) -> Unit raise NullptrError {
+  if !self.stream_buffer.is_blank() {
+    let (sse_chunk, _) = parse_sse_chunk(self.stream_buffer)
+    for content in sse_chunk.contents {
+      match self.streaming_node_id {
+        Some(node_id) =>
+          ignore(target_tree.append_streaming_content(node_id, content))
+        None => ()
+      }
+    }
+  }
+
+  match self.streaming_node_id {
+    Some(node_id) => {
+      ignore(target_tree.finalize_streaming(node_id))
+      self.streaming_node_id = None
+    }
+    None => ()
+  }
+
+  self.stream_buffer = ""
+
+  if reply.error() is NoError {
+    if physical_equal(self.tree, target_tree) {
+      self.sync_view()
+    }
   } else {
-    provider_failure_message(
+    let raw_text = @utf8.decode_lossy(reply.readAll())
+    let error_msg = provider_failure_message(
       provider,
       reply.httpStatusCode(),
       reply.httpReasonPhrase(),
       reply.errorString(),
       raw_text,
     )
-  }
-
-  ignore(target_tree.commit(Message::assistant(assistant_text)))
-  if physical_equal(self.tree, target_tree) {
-    self.sync_view()
+    ignore(target_tree.commit(Message::assistant(error_msg)))
+    if physical_equal(self.tree, target_tree) {
+      self.sync_view()
+    }
   }
 
   self.set_busy(false)

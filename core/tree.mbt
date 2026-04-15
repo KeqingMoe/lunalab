@@ -30,12 +30,13 @@ pub(all) struct ChatNode {
   id : NodeId
   mut parent_id : NodeId?
   child_ids : Array[NodeId]
-  message : Message
+  mut message : Message
   author_type : AuthorType
   op : NodeOp
   origin_node_id : NodeId?
   mut status : NodeStatus
   metadata : Map[String, String]
+  mut streaming_content : String?
 } derive(FromJson, ToJson, Eq, Show)
 
 ///|
@@ -422,6 +423,7 @@ fn ChatTree::insert(
     origin_node_id: spec.origin_node_id,
     status: spec.status,
     metadata: spec.metadata.copy(),
+    streaming_content: None,
   }
   self.nodes.set(node_id, node)
 
@@ -558,6 +560,7 @@ fn clone_node(node : ChatNode) -> ChatNode {
     origin_node_id: node.origin_node_id,
     status: node.status,
     metadata: node.metadata.copy(),
+    streaming_content: node.streaming_content,
   }
 }
 
@@ -576,4 +579,73 @@ fn collect_nodes(nodes : Map[NodeId, ChatNode]) -> Array[ChatNode] {
   let entries = nodes.to_array()
   entries.sort_by((left, right) => String::compare(left.0, right.0))
   entries.map(entry => clone_node(entry.1))
+}
+
+///|
+pub fn ChatTree::start_streaming(self : Self, node_id : NodeId) -> Bool {
+  match self.nodes.get(node_id) {
+    Some(node) => {
+      node.streaming_content = Some("")
+      self.nodes.set(node_id, node)
+      true
+    }
+    None => false
+  }
+}
+
+///|
+pub fn ChatTree::append_streaming_content(
+  self : Self,
+  node_id : NodeId,
+  delta : String,
+) -> Bool {
+  match self.nodes.get(node_id) {
+    Some(node) =>
+      match node.streaming_content {
+        Some(existing) => {
+          node.streaming_content = Some(existing + delta)
+          self.nodes.set(node_id, node)
+          true
+        }
+        None => false
+      }
+    None => false
+  }
+}
+
+///|
+pub fn ChatTree::finalize_streaming(self : Self, node_id : NodeId) -> Bool {
+  match self.nodes.get(node_id) {
+    Some(node) =>
+      match node.streaming_content {
+        Some(content) => {
+          node.message = Message::assistant(content)
+          node.streaming_content = None
+          self.nodes.set(node_id, node)
+          true
+        }
+        None => false
+      }
+    None => false
+  }
+}
+
+///|
+pub fn ChatTree::node_display_content(self : Self, node_id : NodeId) -> String? {
+  match self.nodes.get(node_id) {
+    Some(node) =>
+      match node.streaming_content {
+        Some(streaming) => Some(streaming)
+        None => Some(node.message.content)
+      }
+    None => None
+  }
+}
+
+///|
+pub fn ChatTree::is_streaming(self : Self, node_id : NodeId) -> Bool {
+  match self.nodes.get(node_id) {
+    Some(node) => node.streaming_content is Some(_)
+    None => false
+  }
 }
