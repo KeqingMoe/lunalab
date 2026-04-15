@@ -58,7 +58,9 @@ pub fn ChatPage::new() -> Self {
     let _ = page.composer
       .generate_clicked()
       .connect(_ => page.generate_assistant_message())
-    let _ = page.composer.text_changed().connect(_ => page.sync_view())
+    let _ = page.composer
+      .text_changed()
+      .connect(_ => page.update_composer_hint())
 
     page.sync_view()
     page
@@ -139,6 +141,12 @@ fn ChatPage::generate_assistant_message(self : Self) -> Unit raise NullptrError 
 ///|
 fn ChatPage::sync_view(self : Self) -> Unit raise NullptrError {
   self.chat_view.set_messages(self.tree, conversation_node_ids(self.tree))
+  self.composer.set_branch_hint(head_hint(self.tree))
+  self.composer.set_send_enabled(self.composer.has_text())
+}
+
+///|
+fn ChatPage::update_composer_hint(self : Self) -> Unit raise NullptrError {
   self.composer.set_branch_hint(head_hint(self.tree))
   self.composer.set_send_enabled(self.composer.has_text())
 }
@@ -259,7 +267,7 @@ fn ChatPage::finish_streaming(
 
   if reply.error() is NoError {
     if physical_equal(self.tree, target_tree) {
-      self.sync_view()
+      self.update_composer_hint()
     }
   } else {
     let raw_text = @utf8.decode_lossy(reply.readAll())

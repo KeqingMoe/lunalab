@@ -159,12 +159,8 @@ pub fn ChatView::update_streaming_message(
 
 ///|
 fn ChatView::scroll_to_bottom(self : Self) -> Unit raise NullptrError {
-  if self.rows.length() > 0 {
-    self.scroll.ensureWidgetVisible(
-      self.rows[self.rows.length() - 1],
-      yMargin=24,
-    )
-  }
+  let scrollbar = self.scroll.verticalScrollBar()
+  scrollbar.setValue(scrollbar.maximum())
 }
 
 ///|
