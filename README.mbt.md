@@ -49,6 +49,7 @@ moon check
 moon test
 moon info
 moon fmt
+moon prove
 ```
 
 推荐在提交前至少执行：

@@ -1,0 +1,314 @@
+predicate node_count_valid_inv(model : SnapshotModel) {
+  node_count_valid(model)
+}
+
+predicate root_member_inv(model : SnapshotModel) {
+  root_member(model)
+}
+
+predicate head_member_inv(model : SnapshotModel) {
+  head_member(model)
+}
+
+predicate well_formed_inv(model : SnapshotModel) {
+  node_count_valid_inv(model) && root_member_inv(model) && head_member_inv(model)
+}
+
+predicate path_starts_at(path : PathModel, root : Int) {
+  match path {
+    RootPath(node_id) => node_id == root
+    ChildPath(prefix, _) => path_starts_at(prefix, root)
+  }
+}
+
+predicate path_ends_at(path : PathModel, node_id : Int) {
+  match path {
+    RootPath(root) => root == node_id
+    ChildPath(_, child) => child == node_id
+  }
+}
+
+predicate path_contains(path : PathModel, node_id : Int) {
+  match path {
+    RootPath(root) => root == node_id
+    ChildPath(prefix, child) =>
+      child == node_id || path_contains(prefix, node_id)
+  }
+}
+
+predicate path_has_length(path : PathModel, length : Int) {
+  match path {
+    RootPath(_) => length == 1
+    ChildPath(prefix, _) => length > 1 && path_has_length(prefix, length - 1)
+  }
+}
+
+predicate history_ends_at(history : HistoryModel, node_id : Int) {
+  match history {
+    RootHistory(root) => root == node_id
+    HistoryAppend(_, tail) => tail == node_id
+  }
+}
+
+predicate history_contains(history : HistoryModel, node_id : Int) {
+  match history {
+    RootHistory(root) => root == node_id
+    HistoryAppend(prefix, tail) =>
+      tail == node_id || history_contains(prefix, node_id)
+  }
+}
+
+predicate history_has_length(history : HistoryModel, length : Int) {
+  match history {
+    RootHistory(_) => length == 1
+    HistoryAppend(prefix, _) => length > 1 && history_has_length(prefix, length - 1)
+  }
+}
+
+predicate same_history(left : HistoryModel, right : HistoryModel) {
+  match left {
+    RootHistory(left_root) =>
+      match right {
+        RootHistory(right_root) => left_root == right_root
+        HistoryAppend(_right_prefix, _right_tail) => false
+      }
+    HistoryAppend(left_prefix, left_tail) =>
+      match right {
+        RootHistory(_) => false
+        HistoryAppend(right_prefix, right_tail) =>
+          left_tail == right_tail && same_history(left_prefix, right_prefix)
+      }
+  }
+}
+
+predicate history_prefix_of(prefix : HistoryModel, history : HistoryModel) {
+  same_history(prefix, history) ||
+    match history {
+      RootHistory(_) => false
+      HistoryAppend(parent, _) => history_prefix_of(prefix, parent)
+    }
+}
+
+predicate path_matches_history(path : PathModel, history : HistoryModel) {
+  match path {
+    RootPath(root) =>
+      match history {
+        RootHistory(root1) => root == root1
+        HistoryAppend(_history_prefix, _history_tail) => false
+      }
+    ChildPath(path_prefix, path_tail) =>
+      match history {
+        RootHistory(_) => false
+        HistoryAppend(history_prefix, history_tail) =>
+          path_tail == history_tail &&
+          path_matches_history(path_prefix, history_prefix)
+      }
+  }
+}
+
+predicate same_path(left : PathModel, right : PathModel) {
+  match left {
+    RootPath(left_root) =>
+      match right {
+        RootPath(right_root) => left_root == right_root
+        ChildPath(_right_parent, _right_child) => false
+      }
+    ChildPath(left_parent, left_child) =>
+      match right {
+        RootPath(_) => false
+        ChildPath(right_parent, right_child) =>
+          left_child == right_child && same_path(left_parent, right_parent)
+      }
+  }
+}
+
+predicate prefix_of(prefix : PathModel, path : PathModel) {
+  same_path(prefix, path) ||
+    match path {
+      RootPath(_) => false
+      ChildPath(parent, _) => prefix_of(prefix, parent)
+    }
+}
+
+lemma wf_implies_node_count_valid(model : SnapshotModel) where {
+  proof_require: well_formed_inv(model),
+  proof_ensure: node_count_valid_inv(model),
+} {}
+
+lemma wf_implies_root_member(model : SnapshotModel) where {
+  proof_require: well_formed_inv(model),
+  proof_ensure: root_member_inv(model),
+} {}
+
+lemma wf_implies_head_member(model : SnapshotModel) where {
+  proof_require: well_formed_inv(model),
+  proof_ensure: head_member_inv(model),
+} {}
+
+lemma root_path_starts_at_root(root : Int) where {
+  proof_ensure: path_starts_at(root_path(root), root),
+} {}
+
+lemma root_path_ends_at_root(root : Int) where {
+  proof_ensure: path_ends_at(root_path(root), root),
+} {}
+
+lemma root_path_contains_root(root : Int) where {
+  proof_ensure: path_contains(root_path(root), root),
+} {}
+
+lemma append_child_preserves_start(path : PathModel, child : Int, root : Int) where {
+  proof_require: path_starts_at(path, root),
+  proof_ensure: path_starts_at(append_child(path, child), root),
+} {}
+
+lemma append_child_sets_end(path : PathModel, child : Int) where {
+  proof_ensure: path_ends_at(append_child(path, child), child),
+  proof_ensure: path_contains(append_child(path, child), child),
+} {}
+
+lemma append_child_preserves_existing_member(
+  path : PathModel,
+  child : Int,
+  node_id : Int,
+) where {
+  proof_require: path_contains(path, node_id),
+  proof_ensure: path_contains(append_child(path, child), node_id),
+} {}
+
+lemma append_child_preserves_prefix(
+  prefix : PathModel,
+  path : PathModel,
+  child : Int,
+) where {
+  proof_require: prefix_of(prefix, path),
+  proof_ensure: prefix_of(prefix, append_child(path, child)),
+} {}
+
+lemma root_history_ends_at_root(root : Int) where {
+  proof_ensure: history_ends_at(root_history(root), root),
+  proof_ensure: history_contains(root_history(root), root),
+  proof_ensure: history_has_length(root_history(root), 1),
+} {}
+
+lemma append_history_sets_end(history : HistoryModel, node_id : Int) where {
+  proof_ensure: history_ends_at(append_history(history, node_id), node_id),
+  proof_ensure: history_contains(append_history(history, node_id), node_id),
+} {}
+
+lemma append_history_preserves_existing_member(
+  history : HistoryModel,
+  node_id : Int,
+  existing : Int,
+) where {
+  proof_require: history_contains(history, existing),
+  proof_ensure: history_contains(append_history(history, node_id), existing),
+} {}
+
+lemma append_history_increases_length(
+  history : HistoryModel,
+  node_id : Int,
+  length : Int,
+) where {
+  proof_require: history_has_length(history, length),
+  proof_ensure: history_has_length(append_history(history, node_id), length + 1),
+} {}
+
+lemma append_history_preserves_prefix(
+  prefix : HistoryModel,
+  history : HistoryModel,
+  node_id : Int,
+) where {
+  proof_require: history_prefix_of(prefix, history),
+  proof_ensure: history_prefix_of(prefix, append_history(history, node_id)),
+} {}
+
+lemma root_path_has_length_one(root : Int) where {
+  proof_ensure: path_has_length(root_path(root), 1),
+} {}
+
+lemma append_child_increases_length(
+  path : PathModel,
+  child : Int,
+  length : Int,
+) where {
+  proof_require: path_has_length(path, length),
+  proof_ensure: path_has_length(append_child(path, child), length + 1),
+} {}
+
+lemma path_length_is_positive(path : PathModel, length : Int) where {
+  proof_require: path_has_length(path, length),
+  proof_ensure: length >= 1,
+} {}
+
+lemma root_path_matches_root_history(root : Int) where {
+  proof_ensure: path_matches_history(root_path(root), root_history(root)),
+} {}
+
+lemma append_path_history_stay_in_sync(
+  path : PathModel,
+  history : HistoryModel,
+  node_id : Int,
+) where {
+  proof_require: path_matches_history(path, history),
+  proof_ensure:
+    path_matches_history(
+      append_child(path, node_id),
+      append_history(history, node_id),
+    ),
+} {}
+
+lemma commit_sets_head_to_fresh(model : SnapshotModel) where {
+  proof_ensure:
+    match commit_model(model).head_id {
+      None => false
+      Some(head) => head == fresh_node_id(model)
+    },
+} {}
+
+lemma commit_adds_fresh_node_to_bounds(model : SnapshotModel) where {
+  proof_require: node_count_valid_inv(model),
+  proof_ensure: contains_node(commit_model(model), fresh_node_id(model)),
+} {}
+
+lemma old_node_is_not_fresh(model : SnapshotModel, node_id : Int) where {
+  proof_require: node_count_valid_inv(model),
+  proof_require: contains_node(model, node_id),
+  proof_ensure: node_id != fresh_node_id(model),
+} {}
+
+lemma commit_preserves_node_count_valid(model : SnapshotModel) where {
+  proof_require: node_count_valid_inv(model),
+  proof_ensure: node_count_valid_inv(commit_model(model)),
+} {}
+
+lemma commit_preserves_or_sets_root(model : SnapshotModel) where {
+  proof_ensure:
+    match model.root_id {
+      None =>
+        match commit_model(model).root_id {
+          None => false
+          Some(root) => root == fresh_node_id(model)
+        }
+      Some(root0) =>
+        match commit_model(model).root_id {
+          None => false
+          Some(root1) => root1 == root0
+        }
+    },
+} {}
+
+lemma commit_preserves_head_member(model : SnapshotModel) where {
+  proof_require: node_count_valid_inv(model),
+  proof_ensure: head_member_inv(commit_model(model)),
+} {}
+
+lemma end_node_is_on_path(path : PathModel, node_id : Int) where {
+  proof_require: path_ends_at(path, node_id),
+  proof_ensure: path_contains(path, node_id),
+} {
+  match path {
+    RootPath(_) => ()
+    ChildPath(_, child) => proof_assert child == node_id
+  }
+}
