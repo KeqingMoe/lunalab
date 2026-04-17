@@ -1,7 +1,12 @@
 ///|
 pub(all) enum ProviderKind {
   OpenAICompatible
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for ProviderKind with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub(all) struct ProviderConfig {
@@ -11,7 +16,12 @@ pub(all) struct ProviderConfig {
   base_url : String
   api_key : String
   model : String
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for ProviderConfig with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub(all) struct ConversationRecord {
@@ -20,7 +30,12 @@ pub(all) struct ConversationRecord {
   auto_title : String?
   manual_title : Bool?
   tree : ChatTreeSnapshot
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for ConversationRecord with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub(all) struct AppStateSnapshot {
@@ -32,7 +47,12 @@ pub(all) struct AppStateSnapshot {
   sidebar_width : Int
   sidebar_hidden : Bool
   mut next_session_id : Int
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for AppStateSnapshot with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub struct AppStateStore {

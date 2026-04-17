@@ -6,7 +6,12 @@ pub(all) enum AuthorType {
   Human
   Model
   SystemAuthor
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for AuthorType with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub(all) enum NodeOp {
@@ -15,7 +20,12 @@ pub(all) enum NodeOp {
   Retry
   Compact
   Import
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for NodeOp with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub(all) enum NodeStatus {
@@ -23,7 +33,12 @@ pub(all) enum NodeStatus {
   Stale
   Hidden
   Compacted
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for NodeStatus with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub(all) struct ChatNode {
@@ -37,7 +52,12 @@ pub(all) struct ChatNode {
   mut status : NodeStatus
   metadata : Map[String, String]
   mut streaming_content : String?
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for ChatNode with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub(all) struct CompactSpan {
@@ -45,7 +65,12 @@ pub(all) struct CompactSpan {
   end_node_id : NodeId
   summary_node_id : NodeId
   hidden_node_ids : Array[NodeId]
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for CompactSpan with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub(all) struct NodeInsert {
@@ -55,7 +80,12 @@ pub(all) struct NodeInsert {
   origin_node_id : NodeId?
   status : NodeStatus
   metadata : Map[String, String]
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for NodeInsert with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub(all) struct ChatTreeSnapshot {
@@ -64,7 +94,12 @@ pub(all) struct ChatTreeSnapshot {
   head_id : NodeId?
   nodes : Array[ChatNode]
   compact_spans : Array[CompactSpan]
-} derive(FromJson, ToJson, Eq, Show)
+} derive(FromJson, ToJson, Eq, Debug)
+
+///|
+pub impl Show for ChatTreeSnapshot with output(self, logger) {
+  logger.write_string(@debug.to_string(self))
+}
 
 ///|
 pub struct ChatTree {
