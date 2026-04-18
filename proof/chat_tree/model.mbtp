@@ -65,6 +65,114 @@ predicate history_has_length(history : HistoryModel, length : Int) {
   }
 }
 
+predicate context_ends_at(context : ContextModel, node_id : Int) {
+  match context {
+    RootContext(root) => root == node_id
+    ContextAppend(_, tail) => tail == node_id
+  }
+}
+
+predicate context_contains(context : ContextModel, node_id : Int) {
+  match context {
+    RootContext(root) => root == node_id
+    ContextAppend(prefix, tail) =>
+      tail == node_id || context_contains(prefix, node_id)
+  }
+}
+
+predicate context_has_length(context : ContextModel, length : Int) {
+  match context {
+    RootContext(_) => length == 1
+    ContextAppend(prefix, _) => length > 1 && context_has_length(prefix, length - 1)
+  }
+}
+
+predicate seq_contains(seq : SeqModel, node_id : Int) {
+  match seq {
+    SeqNil => false
+    SeqSnoc(prefix, tail) =>
+      tail == node_id || seq_contains(prefix, node_id)
+  }
+}
+
+predicate seq_has_length(seq : SeqModel, length : Int) {
+  match seq {
+    SeqNil => length == 0
+    SeqSnoc(prefix, _) => length > 0 && seq_has_length(prefix, length - 1)
+  }
+}
+
+predicate same_seq(left : SeqModel, right : SeqModel) {
+  match left {
+    SeqNil =>
+      match right {
+        SeqNil => true
+        SeqSnoc(_right_prefix, _right_tail) => false
+      }
+    SeqSnoc(left_prefix, left_tail) =>
+      match right {
+        SeqNil => false
+        SeqSnoc(right_prefix, right_tail) =>
+          left_tail == right_tail && same_seq(left_prefix, right_prefix)
+      }
+  }
+}
+
+predicate seq_prefix_of(prefix : SeqModel, seq : SeqModel) {
+  same_seq(prefix, seq) ||
+    match seq {
+      SeqNil => false
+      SeqSnoc(parent, _) => seq_prefix_of(prefix, parent)
+    }
+}
+
+predicate history_projects_to_seq(history : HistoryModel, seq : SeqModel) {
+  match history {
+    RootHistory(root) => same_seq(seq, singleton_seq(root))
+    HistoryAppend(prefix, tail) =>
+      match seq {
+        SeqNil => false
+        SeqSnoc(seq_prefix, seq_tail) =>
+          tail == seq_tail && history_projects_to_seq(prefix, seq_prefix)
+      }
+  }
+}
+
+predicate context_projects_to_seq(context : ContextModel, seq : SeqModel) {
+  match context {
+    RootContext(root) => same_seq(seq, singleton_seq(root))
+    ContextAppend(prefix, tail) =>
+      match seq {
+        SeqNil => false
+        SeqSnoc(seq_prefix, seq_tail) =>
+          tail == seq_tail && context_projects_to_seq(prefix, seq_prefix)
+      }
+  }
+}
+
+predicate compacted_sequence_of(
+  prefix : SeqModel,
+  summary_id : Int,
+  suffix : SeqModel,
+  context : SeqModel,
+) {
+  match suffix {
+    SeqNil => same_seq(context, seq_append(prefix, summary_id))
+    SeqSnoc(suffix_prefix, suffix_tail) =>
+      match context {
+        SeqNil => false
+        SeqSnoc(context_prefix, context_tail) =>
+          suffix_tail == context_tail &&
+          compacted_sequence_of(
+            prefix,
+            summary_id,
+            suffix_prefix,
+            context_prefix,
+          )
+      }
+  }
+}
+
 predicate same_history(left : HistoryModel, right : HistoryModel) {
   match left {
     RootHistory(left_root) =>
@@ -89,6 +197,30 @@ predicate history_prefix_of(prefix : HistoryModel, history : HistoryModel) {
     }
 }
 
+predicate same_context(left : ContextModel, right : ContextModel) {
+  match left {
+    RootContext(left_root) =>
+      match right {
+        RootContext(right_root) => left_root == right_root
+        ContextAppend(_right_prefix, _right_tail) => false
+      }
+    ContextAppend(left_prefix, left_tail) =>
+      match right {
+        RootContext(_) => false
+        ContextAppend(right_prefix, right_tail) =>
+          left_tail == right_tail && same_context(left_prefix, right_prefix)
+      }
+  }
+}
+
+predicate context_prefix_of(prefix : ContextModel, context : ContextModel) {
+  same_context(prefix, context) ||
+    match context {
+      RootContext(_) => false
+      ContextAppend(parent, _) => context_prefix_of(prefix, parent)
+    }
+}
+
 predicate path_matches_history(path : PathModel, history : HistoryModel) {
   match path {
     RootPath(root) =>
@@ -102,6 +234,23 @@ predicate path_matches_history(path : PathModel, history : HistoryModel) {
         HistoryAppend(history_prefix, history_tail) =>
           path_tail == history_tail &&
           path_matches_history(path_prefix, history_prefix)
+      }
+  }
+}
+
+predicate history_matches_context(history : HistoryModel, context : ContextModel) {
+  match history {
+    RootHistory(root) =>
+      match context {
+        RootContext(root1) => root == root1
+        ContextAppend(_context_prefix, _context_tail) => false
+      }
+    HistoryAppend(history_prefix, history_tail) =>
+      match context {
+        RootContext(_) => false
+        ContextAppend(context_prefix, context_tail) =>
+          history_tail == context_tail &&
+          history_matches_context(history_prefix, context_prefix)
       }
   }
 }
@@ -223,6 +372,44 @@ lemma append_history_preserves_prefix(
   proof_ensure: history_prefix_of(prefix, append_history(history, node_id)),
 } {}
 
+lemma root_context_ends_at_root(root : Int) where {
+  proof_ensure: context_ends_at(root_context(root), root),
+  proof_ensure: context_contains(root_context(root), root),
+  proof_ensure: context_has_length(root_context(root), 1),
+} {}
+
+lemma append_context_sets_end(context : ContextModel, node_id : Int) where {
+  proof_ensure: context_ends_at(append_context(context, node_id), node_id),
+  proof_ensure: context_contains(append_context(context, node_id), node_id),
+} {}
+
+lemma append_context_preserves_existing_member(
+  context : ContextModel,
+  node_id : Int,
+  existing : Int,
+) where {
+  proof_require: context_contains(context, existing),
+  proof_ensure: context_contains(append_context(context, node_id), existing),
+} {}
+
+lemma append_context_increases_length(
+  context : ContextModel,
+  node_id : Int,
+  length : Int,
+) where {
+  proof_require: context_has_length(context, length),
+  proof_ensure: context_has_length(append_context(context, node_id), length + 1),
+} {}
+
+lemma append_context_preserves_prefix(
+  prefix : ContextModel,
+  context : ContextModel,
+  node_id : Int,
+) where {
+  proof_require: context_prefix_of(prefix, context),
+  proof_ensure: context_prefix_of(prefix, append_context(context, node_id)),
+} {}
+
 lemma root_path_has_length_one(root : Int) where {
   proof_ensure: path_has_length(root_path(root), 1),
 } {}
@@ -239,6 +426,116 @@ lemma append_child_increases_length(
 lemma path_length_is_positive(path : PathModel, length : Int) where {
   proof_require: path_has_length(path, length),
   proof_ensure: length >= 1,
+} {}
+
+lemma singleton_seq_contains_node(node_id : Int) where {
+  proof_ensure: seq_contains(singleton_seq(node_id), node_id),
+  proof_ensure: seq_has_length(singleton_seq(node_id), 1),
+} {}
+
+lemma seq_append_contains_appended(seq : SeqModel, node_id : Int) where {
+  proof_ensure: seq_contains(seq_append(seq, node_id), node_id),
+} {}
+
+lemma seq_append_preserves_existing_member(
+  seq : SeqModel,
+  node_id : Int,
+  existing : Int,
+) where {
+  proof_require: seq_contains(seq, existing),
+  proof_ensure: seq_contains(seq_append(seq, node_id), existing),
+} {}
+
+lemma seq_append_increases_length(
+  seq : SeqModel,
+  node_id : Int,
+  length : Int,
+) where {
+  proof_require: seq_has_length(seq, length),
+  proof_ensure: seq_has_length(seq_append(seq, node_id), length + 1),
+} {}
+
+lemma seq_append_preserves_prefix(
+  prefix : SeqModel,
+  seq : SeqModel,
+  node_id : Int,
+) where {
+  proof_require: seq_prefix_of(prefix, seq),
+  proof_ensure: seq_prefix_of(prefix, seq_append(seq, node_id)),
+} {}
+
+lemma root_history_matches_root_context(root : Int) where {
+  proof_ensure: history_matches_context(root_history(root), root_context(root)),
+} {}
+
+lemma root_history_projects_to_singleton(root : Int) where {
+  proof_ensure: history_projects_to_seq(root_history(root), singleton_seq(root)),
+} {}
+
+lemma append_history_projection_extends(
+  history : HistoryModel,
+  seq : SeqModel,
+  node_id : Int,
+) where {
+  proof_require: history_projects_to_seq(history, seq),
+  proof_ensure:
+    history_projects_to_seq(
+      append_history(history, node_id),
+      seq_append(seq, node_id),
+    ),
+} {}
+
+lemma root_context_projects_to_singleton(root : Int) where {
+  proof_ensure: context_projects_to_seq(root_context(root), singleton_seq(root)),
+} {}
+
+lemma append_context_projection_extends(
+  context : ContextModel,
+  seq : SeqModel,
+  node_id : Int,
+) where {
+  proof_require: context_projects_to_seq(context, seq),
+  proof_ensure:
+    context_projects_to_seq(
+      append_context(context, node_id),
+      seq_append(seq, node_id),
+    ),
+} {}
+
+lemma compacted_sequence_extends_suffix(
+  prefix : SeqModel,
+  summary_id : Int,
+  suffix : SeqModel,
+  context : SeqModel,
+  tail : Int,
+) where {
+  proof_require: compacted_sequence_of(prefix, summary_id, suffix, context),
+  proof_ensure:
+    compacted_sequence_of(
+      prefix,
+      summary_id,
+      seq_append(suffix, tail),
+      seq_append(context, tail),
+    ),
+} {}
+
+lemma compacted_sequence_unappend_suffix(
+  prefix : SeqModel,
+  summary_id : Int,
+  suffix : SeqModel,
+  context : SeqModel,
+  tail : Int,
+  context_tail : Int,
+) where {
+  proof_require:
+    compacted_sequence_of(
+      prefix,
+      summary_id,
+      seq_append(suffix, tail),
+      seq_append(context, context_tail),
+    ),
+  proof_ensure: tail == context_tail,
+  proof_ensure: compacted_sequence_of(prefix, summary_id, suffix, context),
 } {}
 
 lemma root_path_matches_root_history(root : Int) where {
